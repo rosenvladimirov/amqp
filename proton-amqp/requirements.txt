@@ -1,0 +1,8 @@
+# Runtime dependencies — IPC-CFX server (AMQP 1.0)
+# NOTE: rabbitmq-amqp-python-client vendors qpid-proton internally, so
+# python-qpid-proton / pika / aio-pika are NOT needed at runtime.
+rabbitmq-amqp-python-client>=0.8.0   # AMQP 1.0 client (RabbitMQ 4.x, Python >=3.10)
+requests>=2.25.0                     # HTTP forwarder to Odoo
+inflection>=0.5.1                    # CFX message-name normalisation
+xmltodict>=0.13.0                    # CFX JSON<->XML
+dicttoxml2>=2.1.0                    # CFX dict->XML

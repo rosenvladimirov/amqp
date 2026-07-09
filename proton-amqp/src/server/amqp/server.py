@@ -12,7 +12,8 @@ from urllib.parse import urlparse
 from proton import Delivery
 from rabbitmq_amqp_python_client import (
     AddressHelper, Environment, Connection,
-    Message, PosixSslConfigurationContext, Publisher, Consumer
+    Message, PosixSslConfigurationContext, Publisher, Consumer,
+    RecoveryConfiguration,
 )
 
 from .on_amqp_message import MessageHandler
@@ -205,8 +206,14 @@ class ConnectionManager:
         Returns:
             Environment: A configured Environment instance.
         """
-        return (Environment(uri=self.uri, ssl_context=self.ssl_config.context)
-                if self.ssl_config else Environment(uri=self.uri))
+        # rabbitmq-amqp-python-client >=0.7 handles reconnection natively via
+        # RecoveryConfiguration — the machine/broker link may flap, so keep
+        # trying to recover instead of relying on the old manual retry loop.
+        recovery = RecoveryConfiguration(active_recovery=True, MaxReconnectAttempts=50)
+        if self.ssl_config:
+            return Environment(uri=self.uri, ssl_context=self.ssl_config.context,
+                               recovery_configuration=recovery)
+        return Environment(uri=self.uri, recovery_configuration=recovery)
 
     def _configure_addresses(self) -> tuple[str, str]:
         """
