@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from configparser import ConfigParser
 
-from tools.exeption import ConfigurationError
-from transport.amqpendpoint import AmqpEndpoint
+from server.tools.exeption import ConfigurationError
+from server.transport.amqpendpoint import AmqpEndpoint
 
 # Constants
 DEFAULT_EXCHANGE = "CFXExchange"
