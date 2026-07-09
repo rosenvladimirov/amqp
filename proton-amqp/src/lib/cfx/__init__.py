@@ -2,6 +2,7 @@ from . import information_system
 from . import maintenance
 from . import materials
 from . import production
+from . import resourceperformance
 from . import structures
 from . import cfx_message
 from . import exception
