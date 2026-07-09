@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import socket
@@ -5,16 +7,23 @@ import threading
 import time
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Optional, Dict, Callable
+from typing import TYPE_CHECKING, Optional, Dict, Callable
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from proton import Delivery
 from rabbitmq_amqp_python_client import (
     AddressHelper, Environment, Connection,
     Message, PosixSslConfigurationContext, Publisher, Consumer,
     RecoveryConfiguration,
 )
+
+# python-qpid-proton е нужен САМО за P2P (AMQP 1.0 без брокер). Тук `Delivery`
+# се ползва единствено като type annotation на publish()/_publish_message();
+# с `from __future__ import annotations` анотациите са стрингове и не се
+# оценяват по време на изпълнение, затова импортваме proton само за type-
+# checkers → broker-only станция върви без инсталиран qpid-proton.
+if TYPE_CHECKING:
+    from proton import Delivery
 
 from .on_amqp_message import MessageHandler
 from .message_processor import MessageProcessor
