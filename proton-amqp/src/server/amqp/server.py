@@ -310,6 +310,7 @@ class AmqpServer:
             message_heartbeat: Optional[Callable] = None,
             ssl_config: Optional[SslConfig] = None,
             timeout: Optional[int] = 30,
+            on_message: Optional[Callable] = None,
     ) -> None:
         self._thread = None
         self.consumer = None
@@ -319,7 +320,7 @@ class AmqpServer:
         self._setup_connection_manager(
             uri, queue_name, routing_key, exchange_name, ssl_config, timeout
         )
-        self._setup_message_handling(message_handler)
+        self._setup_message_handling(message_handler, on_message)
         self._heartbeat = message_heartbeat
 
     def _validate_input(self, uri: str, queue_name: str) -> None:
@@ -355,9 +356,15 @@ class AmqpServer:
         )
         self.publisher = self.connection_manager.publisher
 
-    def _setup_message_handling(self, message_handler: Optional[Callable]) -> None:
+    def _setup_message_handling(
+            self,
+            message_handler: Optional[Callable],
+            on_message: Optional[Callable] = None,
+    ) -> None:
         self.client_id = f"{self.CLIENT_ID_PREFIX}{id(self)}"
-        self.on_message_handler = message_handler or MessageHandler()
+        # Ако е подаден готов handler — ползваме него; иначе създаваме default
+        # MessageHandler и прокарваме форуардер seam-а към него.
+        self.on_message_handler = message_handler or MessageHandler(on_message=on_message)
         self.on_message_handler.set_client_id(self.client_id)
         self._connection_state.update_connection_state(True)
 

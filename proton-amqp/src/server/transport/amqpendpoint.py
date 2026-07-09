@@ -2,7 +2,7 @@ import json
 import logging
 import threading
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Callable
 
 from server.tools.exeption import PublishError, SubscriptionError
 from server.amqp.server import AmqpServer, SslConfig
@@ -88,6 +88,7 @@ class AmqpEndpoint:
             routing_key: Optional[str] = None,
             exchange_name: Optional[str] = None,
             ssl_config: Optional[SslConfig] = None,
+            on_message: Optional[Callable] = None,
     ) -> None:
         self._connection_state = ConnectionState()
         self.amqp_server = AmqpServer(
@@ -97,6 +98,7 @@ class AmqpEndpoint:
             exchange_name=exchange_name or AmqpConfig.DEFAULT_EXCHANGE_NAME,
             ssl_config=ssl_config,
             message_heartbeat=cfx_heartbeat,
+            on_message=on_message,
         )
         self._connection_state.update_connection_state(True)
 
