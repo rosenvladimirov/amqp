@@ -153,8 +153,8 @@ class ConnectionManager:
             connection setup and management.
     """
     uri: str
-    exchange_name: str
-    queue_name: str
+    exchange_name: Optional[str] = None
+    queue_name: Optional[str] = None
     routing_key: Optional[str] = None
     ssl_config: Optional[SslConfig] = None
     timeout: Optional[int] = None
@@ -175,19 +175,23 @@ class ConnectionManager:
         exceptions if a failure occurs at any step.
 
         Raises:
-            ValueError: If any of the mandatory attributes `uri`, `exchange_name`, or
-            `queue_name` is not provided.
+            ValueError: If the mandatory attribute `uri` is not provided.
             ConnectionError: If there is a failure in resolving the hostname from
             the provided URI or any other connection initialization error.
         """
-        if not self.uri or not self.exchange_name or not self.queue_name:
-            raise ValueError("URI, exchange_name и queue_name са задължителни")
+        # Само `uri` е задължителен. `exchange_name`/`queue_name` са опционални,
+        # за да поддържат и AMQP1.0 P2P режим (адресиране през link source/target,
+        # без exchange/queue). Адресите и publisher-ът се създават само когато са
+        # налични.
+        if not self.uri:
+            raise ValueError("URI е задължителен")
 
         try:
             self.environment = self._initialize_environment()
             self.connection = self._create_connection()
             self.exchange_addr, self.queue_addr = self._configure_addresses()
-            self.publisher = self.connection.publisher(self.exchange_addr)
+            if self.exchange_addr:
+                self.publisher = self.connection.publisher(self.exchange_addr)
         except socket.gaierror:
             parsed = urlparse(self.uri)
             raise ConnectionError(f"Не може да се резолвне хост името: {parsed.hostname}")
@@ -225,14 +229,15 @@ class ConnectionManager:
         as a tuple containing the exchange address and the queue address.
 
         Returns:
-            tuple[str, str]: A tuple containing the exchange address and
-            queue address.
+            tuple[Optional[str], Optional[str]]: A tuple containing the exchange
+            address and queue address; either element is ``None`` when the
+            corresponding name was not provided (P2P mode).
         """
         exchange = AddressHelper.exchange_address(
             self.exchange_name,
             self.routing_key or ""
-        )
-        queue = AddressHelper.queue_address(self.queue_name)
+        ) if self.exchange_name else None
+        queue = AddressHelper.queue_address(self.queue_name) if self.queue_name else None
         return exchange, queue
 
     def _create_connection(self) -> Connection:
