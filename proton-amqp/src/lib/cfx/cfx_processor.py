@@ -1,22 +1,14 @@
 import gzip
 import json
 import logging
-import sys
-from typing import Union, Any, Optional, Dict
+from typing import Union, Any, Optional, Dict, Tuple
 import importlib
-import os
-import inflection
 
 from lib.cfx.cfx_message import CFXMessage
 
 # Typical definitions
 CFXData = Optional[Union[Dict, str, bytes, bytearray,]]
 ProcessedResult = Optional[Union[Dict, Any]]
-
-# System roads
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
 # Logging configuration
 _logger = logging.getLogger(__name__)
@@ -56,10 +48,38 @@ class CFXProcessor:
     """
 
     # Configuration constants
-    DEFAULT_MODULE_PATH = "cfx.cfx_message"
+    DEFAULT_MODULE_PATH = "lib.cfx.cfx_message"
     DEFAULT_MODULE_NAME = "CFXMessage"
-    CFX_IMPORT_PATH = "cfx.cfx_message"
-    LIB_PACKAGE_NAME = "cfx"
+    CFX_IMPORT_PATH = "lib.cfx.cfx_message"
+    LIB_PACKAGE_NAME = "lib.cfx"
+
+    # Explicit CFX message-name → (submodule suffix, class name) map. The AMQP
+    # property ``cfx-message`` (or routing key) carries the topic as
+    # ``CFX.<MessageName>`` (e.g. ``CFX.WorkStarted``); the last segment is
+    # looked up here (case-insensitively) so the TYPED CFX class is imported
+    # instead of the generic :class:`CFXMessage`. The full import path is
+    # ``f"{LIB_PACKAGE_NAME}.{submodule}"``. Keys are lowercased message names
+    # so plain ``inflection.camelize`` (which would turn ``workstarted`` into
+    # ``Workstarted``) is bypassed for the correct PascalCase class name.
+    CFX_MESSAGE_MODULES: Dict[str, Tuple[str, str]] = {
+        "workstarted": ("production.workstarted", "WorkStarted"),
+        "workcompleted": ("production.workcompleted", "WorkCompleted"),
+        "workstagestarted": ("production.workstagestarted", "WorkStageStarted"),
+        "workstagecompleted": ("production.workstagecompleted", "WorkStageCompleted"),
+        "unitsarrived": ("production.unitsarrived", "UnitsArrived"),
+        "unitsdeparted": ("production.unitsdeparted", "UnitsDeparted"),
+        "unitsinitialized": ("production.unitsInitialized", "UnitsInitialized"),
+        "workorderactionexecuted": ("production.workorderactionexecuted", "WorkOrderActionExecuted"),
+        "materialsinstalled": ("production.assembly.materialsinstalled", "MaterialsInstalled"),
+        "unitsinspected": ("production.testandinspection.unitsinspected", "UnitsInspected"),
+        "stationstatechanged": ("resourceperformance.stationstatechanged", "StationStateChanged"),
+        "logentryrecorded": ("resourceperformance.logentryrecorded", "LogEntryRecorded"),
+        "workorderscreated": ("information_system.work_order_management", "WorkOrdersCreated"),
+        "workordersupdated": ("information_system.work_order_management", "WorkOrdersUpdated"),
+        "workordersdeleted": ("information_system.work_order_management", "WorkOrdersDeleted"),
+        "workorderquantityupdated": ("information_system.work_order_management", "WorkOrderQuantityUpdated"),
+        "workorderstatusupdated": ("information_system.work_order_management", "WorkOrderStatusUpdated"),
+    }
 
     def __init__(self, module_path: str = DEFAULT_MODULE_PATH) -> None:
         """
@@ -101,7 +121,9 @@ class CFXProcessor:
 
         """
         if module_path:
-            if isinstance(module_path, dict):
+            # ``module_path`` може да е AMQP property map (dict или dict-подобен
+            # proton обект) — тогава взимаме CFX топика от ключа 'cfx-message'.
+            if not isinstance(module_path, str) and hasattr(module_path, "get"):
                 module_path = module_path.get("cfx-message", self.DEFAULT_MODULE_PATH)
             self._update_module_config(module_path)
 
@@ -129,21 +151,22 @@ class CFXProcessor:
             return None
 
         if isinstance(data, dict):
-            _logger.info(f"Message: {data}")
+            # _logger.info(f"Message: {data}")
             processed_message = json.dumps(self._convert_keys_to_uppercase(data))
+            _logger.info(f"Processed Message: {processed_message.encode('utf-8')}")
             return gzip.compress(processed_message.encode('utf-8'))
 
         if isinstance(data, memoryview):
             decompressed_data = gzip.decompress(data)
             decode_data = decompressed_data.decode('utf-8')
-            _logger.info(f"Message: {decode_data}")
+            # _logger.info(f"Message: {decode_data}")
             processed = self._process_string_data(decode_data)
             processed_message = processed.deserialize(processed.content_dict)
             _logger.info(f"Processed Message: {processed.content_dict}")
             return gzip.compress(processed_message.encode('utf-8'))
 
         if isinstance(data, str):
-            _logger.info(f"Message: {data}")
+            # _logger.info(f"Message: {data}")
             processed = self._process_string_data(data)
             processed_message = processed.deserialize(processed.content_dict)
             _logger.info(f"Processed Message: {processed.content_dict}")
@@ -171,40 +194,58 @@ class CFXProcessor:
     @staticmethod
     def _normalize_module_path(path: str) -> str:
         """
-        Converts the module path to a normalized format. This is done by converting
-        it to lowercase and replacing 'CXF.' with an empty string.
+        Resolves a CFX topic (or module path) to a fully importable module path.
+
+        The incoming ``path`` is normally a CFX topic such as ``CFX.WorkStarted``;
+        the last segment is looked up (case-insensitively) in
+        :attr:`CFX_MESSAGE_MODULES` and mapped to its typed module. Anything not
+        found in the map (including the default ``CFXMessage`` module) falls back
+        to :attr:`DEFAULT_MODULE_PATH` so a generic message is still produced.
 
         Parameters:
             path: str
-                The module path that needs to be normalized.
+                The CFX topic or module path that needs to be normalized.
 
         Returns:
             str
-                The normalized version of the module path.
+                A fully qualified, importable module path.
         """
-        return path.lower().replace('CXF.', '')
+        # Взимаме само името на съобщението (последния сегмент след точка),
+        # напр. 'CFX.WorkStarted' → 'workstarted'. Историческият типов
+        # 'CXF.'→'CFX.' е поправен: стъпваме на явната карта, не на replace.
+        message_name = path.split('.')[-1].lower()
+        mapped = CFXProcessor.CFX_MESSAGE_MODULES.get(message_name)
+        if mapped:
+            return f"{CFXProcessor.LIB_PACKAGE_NAME}.{mapped[0]}"
+        return CFXProcessor.DEFAULT_MODULE_PATH
 
     @staticmethod
     def _convert_to_camel_case(module_path: str) -> str:
         """
-        Converts a module path string into its camel case representation.
+        Resolves a CFX topic (or module path) to the message class name.
 
-        This static method takes a module path, extracts the last segment of the path
-        (separated by '.'), and converts it into a camel case using the `camelize`
-        function from the `inflection` library. It is used for name conversion
-        purposes where camel case formatting is required.
+        The last segment of ``module_path`` (the CFX message name, e.g. the
+        ``WorkStarted`` in ``CFX.WorkStarted``) is looked up case-insensitively in
+        :attr:`CFX_MESSAGE_MODULES` and mapped to its explicit PascalCase class
+        name. Anything not present in the map (including the default message
+        module) falls back to the generic :attr:`DEFAULT_MODULE_NAME`
+        (``CFXMessage``) — the module path can only be resolved through the map,
+        so an unmapped name could never address a typed class anyway; using the
+        generic message keeps such topics decodable instead of crashing.
 
         Args:
-            module_path (str): The full module path string separated by dots,
-            where each dot represents a namespace or module hierarchy.
+            module_path (str): The CFX topic or module path separated by dots.
 
         Returns:
-            str: A string representing the last segment of the module path
-            converted to camel case.
+            str: The message class name to instantiate.
         """
-        if module_path.split(".")[-1].lower() == CFXProcessor.DEFAULT_MODULE_PATH.lower():
-            return CFXProcessor.DEFAULT_MODULE_NAME
-        return inflection.camelize(module_path.split(".")[-1])
+        message_name = module_path.split(".")[-1]
+        mapped = CFXProcessor.CFX_MESSAGE_MODULES.get(message_name.lower())
+        if mapped:
+            # Явната карта носи коректния PascalCase клас (напр. 'WorkStarted'),
+            # който автоматичен camelize не би възстановил от 'workstarted'.
+            return mapped[1]
+        return CFXProcessor.DEFAULT_MODULE_NAME
 
     @staticmethod
     def _convert_keys_to_uppercase(data: Dict) -> Dict:

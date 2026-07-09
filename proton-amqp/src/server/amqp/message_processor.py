@@ -38,8 +38,11 @@ class MessageProcessor(ABC):
         # _logger.info(f"Properties: {properties}")
         # _logger.info(f"Body: {body if isinstance(body, str) else bytes(body).decode('utf-8')}")
         # _logger.info(f"Module: {module}")
+        # Подаваме AMQP свойствата като module_path, за да може CFXProcessor да
+        # извлече CFX топика ('cfx-message', напр. 'CFX.WorkStarted') и да
+        # използва ТИПИЗИРАНИЯ клас, а не генеричния CFXMessage.
         processor = CFXProcessor()
-        self._processed = processor(body)
+        self._processed = processor(body, properties)
         return self._processed
 
     def add_module(self, module: str, processor: Callable[[Any], Any]) -> None:
