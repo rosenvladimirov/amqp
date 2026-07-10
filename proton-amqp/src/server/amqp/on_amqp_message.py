@@ -13,6 +13,20 @@ _logger = logging.getLogger(__name__)
 OnMessage = Callable[[Dict[str, Any], Dict[str, Any]], None]
 
 
+def message_properties(message: Any) -> Dict[str, Any]:
+    """Връща application properties на AMQP съобщение като plain dict.
+
+    Vendored Message класът на rabbitmq-amqp-python-client излага само
+    ``application_properties`` (НЯМА ``properties`` — достъпът гърми с
+    AttributeError), докато raw proton.Message (P2P транспорта) ползва
+    ``properties``. Този helper поддържа и двата типа.
+    """
+    props = getattr(message, "application_properties", None)
+    if props is None:
+        props = getattr(message, "properties", None)
+    return dict(props or {})
+
+
 class MessageHandler(AMQPMessagingHandler, MessageProcessor):
     """
     Handles CFX messages received via AMQP protocol.
@@ -51,8 +65,9 @@ class MessageHandler(AMQPMessagingHandler, MessageProcessor):
         Returns:
             None
         """
-        _logger.info(f"Message received from client: {event.message.properties}")
-        if not event.message.properties.get('ClientId', None) == self._client_id:
+        props = message_properties(event.message)
+        _logger.info(f"Message received from client: {props}")
+        if not props.get('ClientId', None) == self._client_id:
             try:
                 self._process_message(event.message)
                 self._forward(event.message)
@@ -80,7 +95,7 @@ class MessageHandler(AMQPMessagingHandler, MessageProcessor):
         if self._on_message is None:
             return
         payload = self._coerce_payload(message.body)
-        properties = dict(message.properties or {})
+        properties = message_properties(message)
         self._on_message(payload, properties)
 
     @staticmethod

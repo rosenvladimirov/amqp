@@ -25,7 +25,7 @@ class MessageProcessor(ABC):
         _processed (Any): Stores the result of the last processed message.
     """
     _processors: dict[str, Callable[[Any], Any]] = {
-        'cfx-message', CFXProcessor()
+        'cfx-message': CFXProcessor()
     }
     _processed: Any = None
 
@@ -34,7 +34,11 @@ class MessageProcessor(ABC):
 
     def _process_message(self, message, module='cfx-message') -> Any:
         body = message.body
-        properties = message.properties
+        # vendored Message (broker) → application_properties; raw proton (P2P)
+        # и SimpleNamespace (publisher път) → properties
+        properties = getattr(message, 'application_properties', None)
+        if properties is None:
+            properties = getattr(message, 'properties', None)
         # _logger.info(f"Properties: {properties}")
         # _logger.info(f"Body: {body if isinstance(body, str) else bytes(body).decode('utf-8')}")
         # _logger.info(f"Module: {module}")

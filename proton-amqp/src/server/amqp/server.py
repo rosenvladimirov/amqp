@@ -489,9 +489,16 @@ class AmqpServer:
             _logger.debug(
                 f"Message processed: {message_processed} with properties {properties}"
             )
-            # _logger.info(f"Processed {message_processed} with properties {properties}")
+            # vendored Message на rabbitmq-amqp-python-client: body трябва да е
+            # bytes, а application properties живеят в `application_properties`
+            # (атрибут `properties` НЯМА — kwargs проверката гърми с AttributeError)
+            body = message_processed
+            if isinstance(body, (dict, list)):
+                body = json.dumps(body)
+            if isinstance(body, str):
+                body = body.encode("utf-8")
             return self.publisher.publish(
-                Message(body=message_processed, properties=properties)
+                Message(body=body, application_properties=properties)
             )
         except Exception as e:
             raise RuntimeError(f"Error posting the message: {str(e)}")
