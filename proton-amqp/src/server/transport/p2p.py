@@ -74,6 +74,28 @@ def _p2p_handler_cls():
                 _logger.info(
                     f"CFX P2P connected to {self._url} (source={self._source})")
 
+        def on_connection_bound(self, event: Any) -> None:
+            # Listen режим: машините (напр. PARMI/AmqpCFXEndpoint) правят
+            # SASL PLAIN върху plaintext TCP. Без cyrus sasldb приемаме
+            # PLAIN/ANONYMOUS без проверка (както RabbitMQ 3.x толерираше;
+            # мрежата е затворен цехови VLAN). Проверено рънтайм: PLAIN
+            # клиент с произволни креденшъли минава.
+            try:
+                sasl = event.transport.sasl()
+                sasl.allowed_mechs("PLAIN ANONYMOUS")
+                sasl.allow_insecure_mechs = True
+            except Exception as exc:  # noqa: BLE001
+                _logger.debug(f"CFX P2P sasl setup skipped: {exc}")
+
+        def on_link_opening(self, event: Any) -> None:
+            # proton server конвенция: echo-вай адресите на входящите links,
+            # иначе клиентът получава "target does not match" и линкът пада.
+            link = event.link
+            if link.is_receiver and link.remote_target and link.remote_target.address:
+                link.target.address = link.remote_target.address
+            elif link.is_sender and link.remote_source and link.remote_source.address:
+                link.source.address = link.remote_source.address
+
         def on_message(self, event: Any) -> None:
             message = event.message
             payload = MessageHandler._coerce_payload(message.body)
