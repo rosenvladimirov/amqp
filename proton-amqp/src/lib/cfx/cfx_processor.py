@@ -156,9 +156,15 @@ class CFXProcessor:
             _logger.info(f"Processed Message: {processed_message.encode('utf-8')}")
             return gzip.compress(processed_message.encode('utf-8'))
 
-        if isinstance(data, memoryview):
-            decompressed_data = gzip.decompress(data)
-            decode_data = decompressed_data.decode('utf-8')
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            # Старите Europlacer пращат gzip-нат body; PARMI и тестовите
+            # публикации пращат суров JSON → try gzip, fallback plain.
+            raw = bytes(data)
+            try:
+                raw = gzip.decompress(raw)
+            except (OSError, gzip.BadGzipFile):
+                pass  # не е gzip — ползваме байтовете както са
+            decode_data = raw.decode('utf-8')
             # _logger.info(f"Message: {decode_data}")
             processed = self._process_string_data(decode_data)
             processed_message = processed.deserialize(processed.content_dict)
