@@ -78,6 +78,11 @@ class MessageHandler(AMQPMessagingHandler, MessageProcessor):
             except Exception as e:
                 _logger.error(f"Message processing error: {str(e)}")
                 self.delivery_context.discard(event)
+        else:
+            # Собствено съобщение (ехо през fanout) — ЗАДЪЛЖИТЕЛНО се
+            # settle-ва, иначе брокерът го redeliver-ва вечно и опашката
+            # се превръща в отровен цикъл от стари heartbeat-и.
+            self.delivery_context.accept(event)
 
     def _forward(self, message: Any) -> None:
         """
