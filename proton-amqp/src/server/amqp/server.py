@@ -388,6 +388,35 @@ class AmqpServer:
             self.connection_manager.queue_addr,
             message_handler=self.on_message_handler,
         )
+        # Consumer.run() е БЛОКИРАЩ event loop — без него доставките се
+        # dispatch-ват само когато нещо друго бута proton container-а
+        # (реално: 1 съобщение/минута при всеки heartbeat publish).
+        # Собствен daemon thread → истински streaming consume.
+        self._consumer_thread = threading.Thread(
+            target=self._consumer_loop, name="amqp-consumer", daemon=True)
+        self._consumer_thread.start()
+
+    def _consumer_loop(self) -> None:
+        try:
+            self.consumer.run()
+        except Exception as exc:  # noqa: BLE001
+            # При clean stop() receiver-ът се затваря и run() излиза —
+            # логваме само ако още сме в running състояние.
+            if self._running:
+                _logger.error(f"Consumer loop exited: {exc}")
+
+    def stop_consumer(self) -> None:
+        consumer = self.consumer
+        if consumer is None:
+            return
+        try:
+            consumer.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        thread = getattr(self, "_consumer_thread", None)
+        if thread is not None:
+            thread.join(timeout=5)
+            self._consumer_thread = None
 
     def start_publisher(self) -> None:
         _logger.info("Starting Publisher")

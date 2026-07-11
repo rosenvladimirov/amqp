@@ -162,7 +162,12 @@ class AmqpEndpoint:
         self._heartbeat_running = False
 
     def _stop_server(self) -> None:
-        self.amqp_server.consumer.close()
+        # първо спри run() loop-а (иначе close() блокира), после самия link
+        stop = getattr(self.amqp_server, "stop_consumer", None)
+        if callable(stop):
+            stop()
+        if self.amqp_server.consumer is not None:
+            self.amqp_server.consumer.close()
 
     @property
     def uri(self) -> str:
