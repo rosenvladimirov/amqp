@@ -136,8 +136,23 @@ class CFXPlugin:
             on_message: Optional[OnMessage],
     ) -> Optional[CfxTransport]:
         """Build one transport from its spec dict, dispatching on ``transport``."""
-        # По подразбиране е broker (текущият продукционен път); P2P е явен избор.
+        # По подразбиране е broker (текущият продукционен път); P2P/pika = явен избор.
         kind = (spec.get("transport") or "broker").lower()
+        if kind in ("amqp091", "amqp0-9-1", "pika", "rabbit3", "broker091"):
+            # AMQP 0-9-1 (RabbitMQ 3.x) — pika consumer.
+            uri = spec.get("uri") or spec.get("url")
+            queue = spec.get("queue") or spec.get("queue_name")
+            if not uri or not queue:
+                _logger.error("CFXPlugin: amqp091 endpoint needs 'uri' + 'queue'")
+                return None
+            from server.transport.pika_amqp import PikaAmqp091Transport
+            return PikaAmqp091Transport(
+                uri=uri,
+                queue=queue,
+                exchange=spec.get("exchange") or spec.get("exchange_name"),
+                routing_key=spec.get("routing_key", ""),
+                on_message=on_message,
+            )
         if kind in ("p2p", "peer", "amqp1", "direct"):
             url = spec.get("url") or spec.get("uri")
             if not url:
