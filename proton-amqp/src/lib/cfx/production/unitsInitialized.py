@@ -1,3 +1,5 @@
+# Copyright 2024-2026 Rosen Vladimirov / Terraros Commerce Ltd.
+# SPDX-License-Identifier: LGPL-3.0-or-later
 # <summary>
 # Sent when one or more production units are first introduced into the production process flow.
 # Unit initialization most often occurs when new production units are first labeled

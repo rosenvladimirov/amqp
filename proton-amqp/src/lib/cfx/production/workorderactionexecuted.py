@@ -1,3 +1,5 @@
+# Copyright 2024-2026 Rosen Vladimirov / Terraros Commerce Ltd.
+# SPDX-License-Identifier: LGPL-3.0-or-later
 # **NOTE: Added in CFX 1.2**
 #
 # Sent when a non-added value action (out of production) relative to a work order is started,

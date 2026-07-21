@@ -1,3 +1,5 @@
+# Copyright 2024-2026 Rosen Vladimirov / Terraros Commerce Ltd.
+# SPDX-License-Identifier: LGPL-3.0-or-later
 """CFX transport over AMQP 0-9-1 (pika) — for RabbitMQ 3.x brokers.
 
 RabbitMQ 3.x speaks AMQP 0-9-1 natively; its bundled AMQP 1.0 plugin is

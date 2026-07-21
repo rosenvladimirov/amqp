@@ -1,3 +1,5 @@
+# Copyright 2024-2026 Rosen Vladimirov / Terraros Commerce Ltd.
+# SPDX-License-Identifier: LGPL-3.0-or-later
 # Sent by a process endpoint when one or more materials have been installed onto
 # a unit (e.g. component placement by a pick-and-place / SMT machine).
 #
